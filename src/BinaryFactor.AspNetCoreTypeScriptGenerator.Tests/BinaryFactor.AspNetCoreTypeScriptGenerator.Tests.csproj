@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
+    <TypeScriptCompileBlocked>true</TypeScriptCompileBlocked>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BinaryFactor.Utilities" Version="1.0.20-beta" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="ExpectedGeneratedCode\api.ts" />
+    <EmbeddedResource Include="ExpectedGeneratedCode\dto.ts" />
+    <EmbeddedResource Include="ExpectedGeneratedCode\enums.ts" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BinaryFactor.AspNetCoreTypeScriptGenerator\BinaryFactor.AspNetCoreTypeScriptGenerator.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Fixie" Version="2.2.0" />
+    <PackageReference Include="Shouldly" Version="3.0.2" />
+  </ItemGroup>
+
+</Project>

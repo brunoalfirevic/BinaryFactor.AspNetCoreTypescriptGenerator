@@ -1,0 +1,39 @@
+# User-specific files
+*.suo
+*.user
+*.sln.docstates
+*.DotSettings.user
+
+# Build results
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio profiler
+*.psess
+*.vsp
+*.vspx
+
+# ReSharper is a .NET coding add-in
+_ReSharper*/
+*.[Rr]e[Ss]harper
+
+# Publish directory
+[Pp]ublish/
+
+# Others
+*.Cache
+~$*
+*~
+*.dbmdl
+*.[Pp]ublish.xml
+*.pfx
+*.publishsettings
+
+# VS Code
+.vs
+.vscode
+
+#Libre office temp files
+.~lock.*.ods#
+
+**/GeneratedCode/*.ts
