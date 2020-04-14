@@ -30,22 +30,30 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
         {
             this.log("Generating typescript files");
 
-            var generatedModules = GenerateCode();
-
-            foreach (var (module, code) in generatedModules)
+            try
             {
-                var filename = GetModuleFilename(module);
-                var destination = Path.Combine(destinationFolder, filename);
+                var generatedModules = GenerateCode();
 
-                if (forceCreateDestination && !Directory.Exists(destination))
-                    Directory.CreateDirectory(destination);
+                foreach (var (module, code) in generatedModules)
+                {
+                    var filename = GetModuleFilename(module);
+                    var destination = Path.Combine(destinationFolder, filename);
 
-                File.WriteAllText(destination, code);
+                    if (forceCreateDestination && !Directory.Exists(destination))
+                        Directory.CreateDirectory(destination);
 
-                this.log($"    {filename} generated at {Path.GetFullPath(destination)}");
+                    File.WriteAllText(destination, code);
+
+                    this.log($"    {filename} generated at {Path.GetFullPath(destination)}");
+                }
+
+                return generatedModules;
             }
-
-            return generatedModules;
+            catch(Exception e)
+            {
+                this.log($"ERROR GENERATING TYPESCRIPT FILES: {e}");
+                throw;
+            }
         }
 
         public virtual IList<(TypeScriptModule module, string code)> GenerateCode()
@@ -202,6 +210,9 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
         protected virtual IEnumerable<FormattableString> GenerateModuleBody(TypeScriptModule module)
         {
+            if (!module.Types.Any())
+                return new FormattableString[] { $"export {{ }}" };
+
             var typesByNamespace = module.Types
                 .GroupBy(type => CalculateTypescriptNamespace(module, type))
                 .OrderBy(group => group.Key);
@@ -521,7 +532,15 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
         protected virtual TypeScriptModule GetTypeModule(TypeScriptModule currentModule, Type type)
         {
-            return currentModule.ReferencedModules.Single(module => module.Types.Contains(type));
+            var typeModules = currentModule.ReferencedModules.Where(module => module.Types.Contains(type)).ToList();
+
+            if (typeModules.Count == 0)
+                throw new InvalidOperationException($"Could not find type '{type.FullName}' in any of the TypeScript modules referenced from the module '{currentModule.ModuleName}'");
+
+            if (typeModules.Count > 1)
+                throw new InvalidOperationException($"Type '{type.FullName}' was found in multiple modules referenced from the module '{currentModule.ModuleName}'");
+
+            return typeModules[0];
         }
 
         protected virtual string GetModuleReference(TypeScriptModule currentModule, TypeScriptModule importedModule)
