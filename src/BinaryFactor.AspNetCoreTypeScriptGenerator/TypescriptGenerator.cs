@@ -156,7 +156,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
         protected virtual bool IsOwnAssembly(AssemblyName assemblyName)
         {
-            var entryAssemblyName = GetEntryAssembly().FullName;
+            var entryAssemblyName = GetEntryAssembly().GetName().Name;
 
             var firstDotIndex = entryAssemblyName.IndexOf('.');
             var ownAssemblyPrefix = entryAssemblyName.Substring(0, firstDotIndex == -1 ? entryAssemblyName.Length : firstDotIndex);
@@ -172,8 +172,8 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
         protected virtual bool IsDto(Type type)
         {
             return type.IsClass &&
-                   (type.Namespace == type.Assembly.FullName + ".Models" ||
-                    type.Namespace.StartsWith(type.Assembly.FullName + ".Models.") ||
+                   (type.Namespace == type.Assembly.GetName().Name + ".Models" ||
+                    type.Namespace.StartsWith(type.Assembly.GetName().Name + ".Models.") ||
                     type.IsNestedPublic && IsPossiblyAbstractController(type.DeclaringType));
         }
 

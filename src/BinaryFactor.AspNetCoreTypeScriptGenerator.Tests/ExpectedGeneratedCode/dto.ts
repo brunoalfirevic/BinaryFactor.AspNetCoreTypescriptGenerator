@@ -2,6 +2,10 @@
 import * as enums from './enums';
 
 
+export interface DtoInModelsFolder {
+    value: string | null;
+}
+
 export interface UserDto {
     firstName: string | null;
     lastName: string | null;
