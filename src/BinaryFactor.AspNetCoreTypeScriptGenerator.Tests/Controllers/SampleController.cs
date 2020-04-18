@@ -32,6 +32,9 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Controllers
             public DtoInModelsFolder ValueNullableByMaybeNull { get; set; }
 
             public string FirstName { get; set; }
+
+            [NotNull]
+            public string LastNameNotNull { get; set; }
         }
     }
 

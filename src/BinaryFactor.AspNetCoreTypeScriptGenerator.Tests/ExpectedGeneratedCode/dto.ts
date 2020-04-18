@@ -9,4 +9,5 @@ export interface DtoInModelsFolder {
 export interface UserDto {
     valueNullableByMaybeNull: DtoInModelsFolder | null;
     firstName: string | null;
+    lastNameNotNull: string;
 }

@@ -447,10 +447,14 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
         {
             FormattableString declaration = $"{GetTypeScriptTypeName(currentModule, type)}";
 
-            if (ShouldMakeDeclarationTypeNullable(type, attributeProviders))
-                declaration = $"{declaration} | null";
+            return ShouldMakeDeclarationTypeNullable(type, attributeProviders)
+                ? MarkTypeDeclarationAsNullable(declaration)
+                : declaration;
+        }
 
-            return declaration;
+        protected virtual FormattableString MarkTypeDeclarationAsNullable(FormattableString typeDeclaration)
+        {
+            return $"{typeDeclaration} | null";
         }
 
         protected virtual bool ShouldMakeDeclarationTypeNullable(Type type, params ICustomAttributeProvider[] attributeProviders)
