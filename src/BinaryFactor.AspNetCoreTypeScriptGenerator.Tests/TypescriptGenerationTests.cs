@@ -4,7 +4,6 @@ using Shouldly;
 using BinaryFactor.Utilities;
 using BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Utilities;
 using System.IO;
-using System;
 
 namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests
 {

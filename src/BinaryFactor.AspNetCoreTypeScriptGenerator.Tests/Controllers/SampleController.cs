@@ -1,5 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Models;
+using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Controllers
 {
@@ -18,10 +20,22 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Controllers
             return new List<UserDto>();
         }
 
+        [return: MaybeNull]
+        public DtoInModelsFolder GetMaybeNullReturn([AllowNull] int number)
+        {
+            return null;
+        }
+
         public class UserDto
         {
+            [MaybeNull]
+            public DtoInModelsFolder ValueNullableByMaybeNull { get; set; }
+
             public string FirstName { get; set; }
-            public string LastName { get; set; }
         }
+    }
+
+    public class MyCustomAttr: System.Attribute
+    {
     }
 }

@@ -15,4 +15,14 @@ export namespace SampleController {
 
         return response.data
     }
+    export async function getMaybeNullReturn(number: number | null): Promise<dto.DtoInModelsFolder | null> {
+        const response = await axios.request({
+            url: '/Sample/GetMaybeNullReturn',
+            method: 'GET',
+            params: { number },
+            data: null
+        });
+
+        return response.data
+    }
 }

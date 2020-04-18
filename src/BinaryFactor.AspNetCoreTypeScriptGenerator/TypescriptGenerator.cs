@@ -320,6 +320,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
             return type
                 .GetProperties(bindingFlags)
+                .Where(property => property.CanRead)
                 .Cast<MemberInfo>()
                 .Union(type.GetFields(bindingFlags))
                 .ToList();
@@ -336,12 +337,17 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
         protected virtual FormattableString GenerateDtoProperty(TypeScriptModule currentModule, MemberInfo member)
         {
-            var memberType =
-                (member is FieldInfo fieldInfo) ? fieldInfo.FieldType :
-                (member is PropertyInfo propertyInfo) ? propertyInfo.PropertyType :
+            return $"{GetDtoPropertyJsName(member)}: {GetDtoPropertyTypeDeclaration(currentModule, member)};";
+        }
+
+        protected virtual FormattableString GetDtoPropertyTypeDeclaration(TypeScriptModule currentModule, MemberInfo member)
+        {
+            var (memberType, customAttributeProviders) =
+                (member is FieldInfo fieldInfo) ? (fieldInfo.FieldType, new ICustomAttributeProvider[] { fieldInfo }) :
+                (member is PropertyInfo propertyInfo) ? (propertyInfo.PropertyType, new ICustomAttributeProvider[] { propertyInfo, propertyInfo.GetMethod, propertyInfo.GetMethod.ReturnTypeCustomAttributes }) :
                 throw new ArgumentException();
 
-            return $"{GetDtoPropertyJsName(member)}: {GetVariableTypeDeclaration(currentModule, memberType)};";
+            return GetVariableTypeDeclaration(currentModule, memberType, customAttributeProviders);
         }
 
         protected virtual string GetDtoPropertyJsName(MemberInfo member)
@@ -363,7 +369,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
             return $@"
                 export namespace {type.Name} {{
-                    {methods.SelectFS(method => GenerateControllerMethod(currentModule, method))}
+                    {methods.SelectFS(method => GenerateControllerMethod(currentModule, method)).AppendToEach($"{Environment.NewLine}")}
                 }}
             ";
         }
@@ -390,17 +396,17 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
             return GenerateControllerMethodDeclaration(currentModule, method, returnTypeDeclaration, GenerateControllerMethodBody);
         }
 
-        protected virtual string GetControllerReturnTypeDeclaration(TypeScriptModule currentModule, MethodInfo method)
+        protected virtual FormattableString GetControllerReturnTypeDeclaration(TypeScriptModule currentModule, MethodInfo method)
         {
-            return GetVariableTypeDeclaration(currentModule, method.ReturnType.UnwrapPossibleTaskType());
+            return GetVariableTypeDeclaration(currentModule, method.ReturnType.UnwrapPossibleTaskType(), method, method.ReturnTypeCustomAttributes);
         }
 
-        protected virtual FormattableString GenerateControllerMethodDeclaration(TypeScriptModule currentModule, MethodInfo method, string returnTypeDeclaration, Func<MethodInfo, FormattableString> controllerMethodBodyGenerator)
+        protected virtual FormattableString GenerateControllerMethodDeclaration(TypeScriptModule currentModule, MethodInfo method, FormattableString returnTypeDeclaration, Func<MethodInfo, FormattableString> controllerMethodBodyGenerator)
         {
             var parameters = method
                 .GetParameters()
                 .Select(p => GetControllerParameterDeclaration(currentModule, p))
-                .JoinBy(", ");
+                .JoinBy($", ");
 
             return $@"
                 export async function {ToCamelCase(method.Name)}({parameters}): Promise<{returnTypeDeclaration}> {{
@@ -427,19 +433,59 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 return response.data";
         }
 
-        protected virtual string GetControllerParameterDeclaration(TypeScriptModule currentModule, ParameterInfo parameter)
+        protected virtual FormattableString GetControllerParameterDeclaration(TypeScriptModule currentModule, ParameterInfo parameter)
         {
-            return $"{parameter.Name}{(parameter.HasDefaultValue ? "?" : "")}: {GetVariableTypeDeclaration(currentModule, parameter.ParameterType)}";
+            return $"{parameter.Name}{(parameter.HasDefaultValue ? "?" : "")}: {GetControllerParameterTypeDeclaration(currentModule, parameter)}";
         }
 
-        protected virtual string GetVariableTypeDeclaration(TypeScriptModule currentModule, Type type)
+        protected virtual FormattableString GetControllerParameterTypeDeclaration(TypeScriptModule currentModule, ParameterInfo parameter)
         {
-            var declaration = GetTypeScriptTypeName(currentModule, type);
+            return GetVariableTypeDeclaration(currentModule, parameter.ParameterType, parameter);
+        }
 
-            if (type.IsNullableValueType() || type.Is<string>())
-                declaration += " | null";
+        protected virtual FormattableString GetVariableTypeDeclaration(TypeScriptModule currentModule, Type type, params ICustomAttributeProvider[] attributeProviders)
+        {
+            FormattableString declaration = $"{GetTypeScriptTypeName(currentModule, type)}";
+
+            if (ShouldMakeDeclarationTypeNullable(type, attributeProviders))
+                declaration = $"{declaration} | null";
 
             return declaration;
+        }
+
+        protected virtual bool ShouldMakeDeclarationTypeNullable(Type type, params ICustomAttributeProvider[] attributeProviders)
+        {
+            foreach(var attributeProvider in attributeProviders)
+            {
+                var customAttrs = attributeProvider.CustomAttrs();
+
+                if (customAttrs.Has("System.Diagnostics.CodeAnalysis.DisallowNullAttribute") ||
+                    customAttrs.Has("System.Diagnostics.CodeAnalysis.NotNullAttribute") ||
+                    customAttrs.Has("JetBrains.Annotations.NotNullAttribute"))
+                {
+                    return false;
+                }
+
+                if (customAttrs.Has("System.Diagnostics.CodeAnalysis.MaybeNullAttribute") ||
+                    customAttrs.Has("System.Diagnostics.CodeAnalysis.AllowNullAttribute") ||
+                    customAttrs.Has("System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute") ||
+                    customAttrs.Has("JetBrains.Annotations.CanBeNullAttribute"))
+                {
+                    return true;
+                }
+            }
+
+            if (type.IsNullableValueType())
+            {
+                return true;
+            }
+
+            if (type.Is<string>())
+            {
+                return true;
+            }
+
+            return false;
         }
 
         protected virtual string GetTypeScriptTypeName(TypeScriptModule currentModule, Type type)
@@ -532,7 +578,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
         protected virtual TypeScriptModule GetTypeModule(TypeScriptModule currentModule, Type type)
         {
-            var typeModules = currentModule.ReferencedModules.Where(module => module.Types.Contains(type)).ToList();
+            var typeModules = currentModule.ReferencedModules.Append(currentModule).Where(module => module.Types.Contains(type)).ToList();
 
             if (typeModules.Count == 0)
                 throw new InvalidOperationException($"Could not find type '{type.FullName}' in any of the TypeScript modules referenced from the module '{currentModule.ModuleName}'");

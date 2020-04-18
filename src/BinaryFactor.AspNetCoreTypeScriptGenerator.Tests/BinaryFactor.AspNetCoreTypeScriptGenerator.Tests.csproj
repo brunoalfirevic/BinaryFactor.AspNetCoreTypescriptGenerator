@@ -3,12 +3,13 @@
   <PropertyGroup>
     <TargetFramework>netcoreapp3.1</TargetFramework>
     <IsPackable>false</IsPackable>
+    <LangVersion>8</LangVersion>
     <NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
     <TypeScriptCompileBlocked>true</TypeScriptCompileBlocked>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BinaryFactor.Utilities" Version="1.0.20-beta" />
+    <PackageReference Include="BinaryFactor.Utilities" Version="1.0.22-beta" />
   </ItemGroup>
 
   <ItemGroup>
