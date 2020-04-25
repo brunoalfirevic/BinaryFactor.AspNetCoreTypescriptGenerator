@@ -17,18 +17,18 @@ using Microsoft.AspNetCore.Mvc.Routing;
 
 namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 {
-    public class TypescriptGenerator
+    public class TypeScriptGenerator
     {
         private readonly Action<string> log;
 
-        public TypescriptGenerator(Action<string> log = null)
+        public TypeScriptGenerator(Action<string> log = null)
         {
             this.log = log ?? (msg => Console.WriteLine(msg));
         }
 
         public virtual IList<(TypeScriptModule module, string code)> GenerateCodeAndSave(string destinationFolder, bool forceCreateDestination = false)
         {
-            this.log("Generating typescript files");
+            this.log("Generating TypeScript files");
 
             try
             {
@@ -214,7 +214,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 return new FormattableString[] { $"export {{ }}" };
 
             var typesByNamespace = module.Types
-                .GroupBy(type => CalculateTypescriptNamespace(module, type))
+                .GroupBy(type => CalculateTypeScriptNamespace(module, type))
                 .OrderBy(group => group.Key);
 
             return typesByNamespace.SelectFS(
@@ -234,7 +234,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
             ";
         }
 
-        protected virtual string CalculateTypescriptNamespace(TypeScriptModule currentModule, Type type)
+        protected virtual string CalculateTypeScriptNamespace(TypeScriptModule currentModule, Type type)
         {
             return "";
         }
@@ -562,7 +562,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
             return new[]
             {
                 GetModuleReference(currentModule, typeModule),
-                CalculateTypescriptNamespace(typeModule, type),
+                CalculateTypeScriptNamespace(typeModule, type),
                 NameWithGenericArguments(currentModule, type)
             }.JoinNonEmpty(".");
         }

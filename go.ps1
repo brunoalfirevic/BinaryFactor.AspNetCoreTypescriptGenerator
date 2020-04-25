@@ -4,7 +4,7 @@
 
 . .\go-helpers
 
-$project_name = "AspNetCoreTypescriptGenerator"
+$project_name = "AspNetCoreTypeScriptGenerator"
 
 function clean {
     info "Cleaning build artifacts"

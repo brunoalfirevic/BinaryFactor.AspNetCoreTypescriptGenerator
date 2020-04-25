@@ -7,13 +7,13 @@ using System.IO;
 
 namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests
 {
-    public class TypescriptGenerationTests
+    public class TypeScriptGenerationTests
     {
         public void TypeScriptGenerationTest()
         {
             var destination = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), @"..\..\..\GeneratedCode");
 
-            var generatedModules = new TypescriptGenerator()
+            var generatedModules = new TypeScriptGenerator()
                 .GenerateCodeAndSave(destination)
                 .ToDictionary(gm => gm.module.ModuleName, gm => gm.code);
 
