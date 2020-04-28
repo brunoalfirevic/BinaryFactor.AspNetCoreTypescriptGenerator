@@ -16,7 +16,7 @@ export namespace SampleController {
         return response.data
     }
 
-    export async function getMaybeNullReturn(number: number | undefined): Promise<dto.DtoInModelsFolder | undefined> {
+    export async function getMaybeNullReturn(number: number | undefined | null): Promise<dto.DtoInModelsFolder | undefined | null> {
         const response = await axios.request({
             url: '/Sample/GetMaybeNullReturn',
             method: 'GET',

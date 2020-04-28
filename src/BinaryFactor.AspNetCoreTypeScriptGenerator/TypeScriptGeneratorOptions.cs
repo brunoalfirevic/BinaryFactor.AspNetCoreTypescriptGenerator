@@ -7,10 +7,17 @@ using System.Reflection;
 
 namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 {
+    public enum NullableTypeMapping
+    {
+        Null,
+        Undefined,
+        NullOrUndefined
+    }
+
     public class TypeScriptGeneratorOptions
     {
         public bool StringsAreNullableByDefault { get; set; } = true;
-        public bool UseUndefinedForNullableTypes { get; set; } = true;
+        public NullableTypeMapping NullableTypeMapping { get; set; } = NullableTypeMapping.NullOrUndefined;
         public IList<Type> AdditionalEntryTypes { get; set; } = new List<Type>();
         public IList<Assembly> EntryAssemblies { get; set; } = new[] { Assembly.GetEntryAssembly() };
         public Func<string, IEnumerable<FormattableString>> ModuleImports { get; set; } = _ => new FormattableString[] { };

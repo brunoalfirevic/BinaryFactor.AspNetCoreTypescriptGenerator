@@ -2,11 +2,11 @@
 
 
 export interface DtoInModelsFolder {
-    value: string | undefined;
+    value: string | undefined | null;
 }
 
 export interface UserDto {
-    valueNullableByMaybeNull: DtoInModelsFolder | undefined;
-    firstName: string | undefined;
+    valueNullableByMaybeNull: DtoInModelsFolder | undefined | null;
+    firstName: string | undefined | null;
     lastNameNotNull: string;
 }

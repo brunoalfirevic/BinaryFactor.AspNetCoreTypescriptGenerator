@@ -525,7 +525,16 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
         protected virtual FormattableString MarkTypeDeclarationAsNullable(FormattableString typeDeclaration)
         {
-            return $"{typeDeclaration} | {(this.options.UseUndefinedForNullableTypes ? "undefined" : "null")}";
+            var nullMarker = this.options.NullableTypeMapping switch
+            {
+                NullableTypeMapping.Null => "null",
+                NullableTypeMapping.Undefined => "undefined",
+                NullableTypeMapping.NullOrUndefined => "undefined | null",
+
+                _ => throw new ArgumentException()
+            };
+
+            return $"{typeDeclaration} | {nullMarker}";
         }
 
         protected virtual bool ShouldMakeDeclarationTypeNullable(Type type, params ICustomAttributeProvider[] attributeProviders)
