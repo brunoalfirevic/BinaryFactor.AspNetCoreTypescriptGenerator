@@ -15,7 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BinaryFactor.Utilities" Version="1.0.22-beta" />
+    <PackageReference Include="BinaryFactor.Utilities" Version="1.0.27-beta" />
     <PackageReference Include="BinaryFactor.InterpolatedTemplates" Version="1.0.11-beta" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Core" Version="2.2" />
   </ItemGroup>

@@ -15,7 +15,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests
 
             var generatedModules = new TypeScriptGenerator()
                 .GenerateCodeAndSave(destination)
-                .ToDictionary(gm => gm.module.ModuleName, gm => gm.code);
+                .ToDictionary(gm => gm.module, gm => gm.code);
 
             generatedModules.Count.ShouldBe(3);
 

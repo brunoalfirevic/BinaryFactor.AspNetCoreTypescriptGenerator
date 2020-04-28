@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BinaryFactor.Utilities" Version="1.0.22-beta" />
+    <PackageReference Include="BinaryFactor.Utilities" Version="1.0.27-beta" />
   </ItemGroup>
 
   <ItemGroup>
