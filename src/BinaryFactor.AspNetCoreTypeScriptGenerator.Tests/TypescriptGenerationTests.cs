@@ -13,6 +13,9 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests
         {
             var destination = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), @"..\..\..\GeneratedCode");
 
+            foreach (var file in Directory.EnumerateFiles(destination, "*.ts"))
+                File.Delete(file);
+
             var generatedModules = new TypeScriptGenerator()
                 .GenerateCodeAndSave(destination)
                 .ToDictionary(gm => gm.module, gm => gm.code);

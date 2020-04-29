@@ -1,5 +1,6 @@
 ﻿using BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Models;
 using Microsoft.AspNetCore.Mvc;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 
@@ -15,16 +16,27 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Controllers
     [Route("[controller]/[action]")]
     public class SampleController: Controller
     {
-        public IList<UserDto> GetRegisteredUsers(UserType userType)
-        {
-            return new List<UserDto>();
-        }
+        public IList<UserDto> GetRegisteredUsers(UserType userType) => default;
+
+        public IList<UserDto> GetRegisteredUsersWithNullableParam(UserType? userType) => default;
+
+        public IList<int?> GetIntegers() => default;
+
+        public GenericDtoWrapper<string, UserDto> GetUserDtoWithWrapper() => default;
+
+        public GenericDtoWrapper<int, IList<string>> GetIntWithWrapper() => default;
+
+        public NullableValueTypeWrapper<DateTime> GetWrappedDateTime() => default;
 
         [return: MaybeNull]
-        public DtoInModelsFolder GetMaybeNullReturn([AllowNull] int number)
-        {
-            return null;
-        }
+        public DtoInModelsFolder GetMaybeNullReturn([AllowNull] string str) => default;
+
+        public Dictionary<int, string> GetNumberDictionary() => default;
+
+        public Dictionary<UserType, string> GetEnumDictionary() => default;
+
+        [return: MaybeNull]
+        public object GetMaybeNullObjectReturn([AllowNull] int number) => default;
 
         public class UserDto
         {
@@ -36,9 +48,5 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Controllers
             [NotNull]
             public string LastNameNotNull { get; set; }
         }
-    }
-
-    public class MyCustomAttr: System.Attribute
-    {
     }
 }

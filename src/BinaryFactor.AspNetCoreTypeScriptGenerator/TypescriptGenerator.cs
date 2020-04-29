@@ -8,10 +8,12 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using BinaryFactor.InterpolatedTemplates;
 using BinaryFactor.Utilities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.Routing;
 
@@ -87,7 +89,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                         module.moduleName,
                         module.types,
                         module.imports,
-                        GetDefaultModuleImports(module.moduleName).Concat(this.options.ModuleImports(module.moduleName)),
+                        GetDefaultModuleImports(module.moduleName).Concat(this.options.AdditionalModuleImports(module.moduleName)),
                         this.options.AdditionalModuleContent(module.moduleName));
 
                     var formattedCode = new InterpolatedTemplateProcessor().Render(generatedCode);
@@ -114,7 +116,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
         public virtual IDictionary<Type, ISet<Type>> GetAllReferencedTypes(IList<Type> entryTypes)
         {
-            var pendingTypes = new HashSet<Type>(entryTypes);
+            var pendingTypes = new HashSet<Type>(entryTypes.Where(type => this.options.TypeFilter(type)));
             var result = pendingTypes.ToDictionary(type => type, _ => (ISet<Type>) new HashSet<Type>());
 
             void Visit(Type type)
@@ -126,13 +128,11 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 }
             }
 
-            void AddToResult(Type dependent, IEnumerable<Type> dependencies)
+            void AddToResult(Type dependent, IEnumerable<TypeWithNullabilityContext> dependencies)
             {
-                Visit(dependent);
-
-                foreach (var type in dependencies.SelectMany(UnwrapPossibleCollectionType))
+                foreach (var type in dependencies.Select(t => GetTypeRef(t)).SelectMany(typeRef => typeRef.GetDependencies()))
                 {
-                    if (!IsOwnType(type))
+                    if (!this.options.TypeFilter(type))
                         continue;
 
                     Visit(type);
@@ -152,28 +152,45 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
             return result;
         }
 
-        protected virtual IList<Type> GetDependencies(Type type)
+        protected virtual IList<TypeWithNullabilityContext> GetDependencies(Type type)
         {
-            var result = new List<Type>();
+            var result = new List<TypeWithNullabilityContext>();
 
             if (IsNonAbstractController(type))
             {
                 var methods = GetControllerMethods(type);
-                result.AddRange(methods.Select(method => method.ReturnType));
-                result.AddRange(methods.SelectMany(method => method.GetParameters()).Select(parameter => parameter.ParameterType));
+                result.AddRange(methods.Select(method => UnwrapControllerActionReturnType(TypeWithNullabilityContext.MethodReturnType(method))));
+                result.AddRange(methods.SelectMany(method => method.GetParameters()).Select(TypeWithNullabilityContext.ParameterType));
             }
             else if (IsDto(type))
             {
                 if (type.BaseType != null)
-                    result.Add(type.BaseType);
+                    TypeWithNullabilityContext.BaseType(type);
 
-                result.AddRange(type.GetInterfaces());
+                result.AddRange(TypeWithNullabilityContext.ImplementedInterfaces(type));
 
                 var properties = GetDtoProperties(type);
-                result.AddRange(properties.Select(GetFieldOrPropertyType));
+                result.AddRange(properties.Select(TypeWithNullabilityContext.FieldOrPropertyType));
             }
 
             return result;
+        }
+
+        protected virtual TypeWithNullabilityContext UnwrapControllerActionReturnType(TypeWithNullabilityContext type)
+        {
+            if (type.IsAssignableToGenericType(typeof(Task<>)))
+                type = type.ExtractGenericArguments(typeof(Task<>)).Single();
+
+            if (type.GetClrType().Is<Task>())
+                return TypeWithNullabilityContext.Contextless(typeof(void));
+
+            if (type.IsAssignableToGenericType(typeof(ActionResult<>)))
+                return type.ExtractGenericArguments(typeof(ActionResult<>)).Single();
+
+            if (type.GetClrType().Is<IActionResult>() || type.GetClrType().Is<IConvertToActionResult>())
+                return TypeWithNullabilityContext.Contextless(typeof(object));
+
+            return type;
         }
 
         protected virtual string GetModule(Type type)
@@ -212,27 +229,14 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
             return null;
         }
 
-        protected virtual bool IsOwnAssembly(Assembly assembly)
+        protected virtual bool IsControllerAction(MethodInfo method)
         {
-            var entryAssemblyNames = this.options.EntryAssemblies.Select(assembly => assembly.GetName().Name).ToList();
-
-            return entryAssemblyNames.Any(entryAssemblyName =>
+            return !new[]
             {
-                var firstDotIndex = entryAssemblyName.IndexOf('.');
-                var ownAssemblyPrefix = entryAssemblyName.Substring(0, firstDotIndex == -1 ? entryAssemblyName.Length : firstDotIndex);
-
-                return assembly.GetName().FullName.StartsWith(ownAssemblyPrefix, StringComparison.OrdinalIgnoreCase);
-            });
-        }
-
-        protected virtual bool IsOwnType(Type type)
-        {
-            return this.options.IsOwnTypeChecker?.Invoke(type) ?? IsOwnAssembly(type.Assembly);
-        }
-
-        protected virtual bool IsOwnControllerMethod(MethodInfo method)
-        {
-            return IsOwnType(method.DeclaringType);
+                "Microsoft.AspNetCore.Mvc.Controller",
+                "Microsoft.AspNetCore.Mvc.ControllerBase",
+                "System.Object"
+            }.Contains(method.DeclaringType.FullName) && this.options.TypeFilter(method.DeclaringType) && method.IsPublic;
         }
 
         protected virtual bool IsNonAbstractController(Type type)
@@ -296,11 +300,6 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                     {code}
                 }}
             ";
-        }
-
-        protected virtual string CalculateTypeScriptNamespace(string currentModule, Type type)
-        {
-            return "";
         }
 
         protected virtual FormattableString GenerateEnum(string currentModule, Type type)
@@ -390,30 +389,31 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 .ToList();
         }
 
-        protected virtual string GetDtoTypeDeclaration(string currentModule, Type type)
+        protected virtual FormattableString GetDtoTypeDeclaration(string currentModule, Type type)
         {
-            var baseTypeDeclaration = type.BaseType != typeof(object)
-                ? $" extends {GetTypeScriptTypeName(currentModule, type.BaseType)}"
-                : "";
+            var typeRef = GetTypeRef(TypeWithNullabilityContext.Contextless(type));
+            var declaration = GetTypeScriptTypeName(currentModule, typeRef);
 
-            return NameWithGenericArguments(currentModule, type) + baseTypeDeclaration;
+            if (type.BaseType == null || type.BaseType == typeof(object))
+                return $"{declaration}";
+
+            var baseTypeRef = GetTypeRef(TypeWithNullabilityContext.BaseType(type));
+            return $"{declaration} extends {GetTypeScriptTypeName(currentModule, baseTypeRef)}";
         }
 
         protected virtual FormattableString GenerateDtoProperty(string currentModule, MemberInfo member)
         {
-            return $"{GetDtoPropertyJsName(member)}: {GetDtoPropertyTypeDeclaration(currentModule, member)};";
-        }
+            var propertyType = TypeWithNullabilityContext.FieldOrPropertyType(member);
+            var propertyTypeRef = GetTypeRef(propertyType, this.options.PropertyNullableTypeMapping);
+            var propertyName = GetDtoPropertyJsName(member);
 
-        protected virtual FormattableString GetDtoPropertyTypeDeclaration(string currentModule, MemberInfo member)
-        {
-            var memberType = GetFieldOrPropertyType(member);
+            if (this.options.MakeUndefinedPropertiesOptional && propertyTypeRef.Is(TypeRef.Undefined))
+            {
+                propertyTypeRef = propertyTypeRef.Subtract(TypeRef.Undefined);
+                propertyName += "?";
+            }
 
-            var customAttributeProviders =
-                member is FieldInfo fieldInfo ? new ICustomAttributeProvider[] { fieldInfo } :
-                member is PropertyInfo propertyInfo ? new ICustomAttributeProvider[] { propertyInfo, propertyInfo.GetMethod, propertyInfo.GetMethod.ReturnTypeCustomAttributes } :
-                throw new ArgumentException();
-
-            return GetVariableTypeDeclaration(currentModule, memberType, customAttributeProviders);
+            return $"{propertyName}: {GetVariableTypeDeclaration(currentModule, propertyTypeRef)};";
         }
 
         protected virtual string GetDtoPropertyJsName(MemberInfo member)
@@ -451,7 +451,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
             return type
                 .GetMethods(bindingFlags)
-                .Where(method => !IsPropertyGetterOrSetter(method) && IsOwnControllerMethod(method))
+                .Where(method => !IsPropertyGetterOrSetter(method) && IsControllerAction(method))
                 .ToList();
         }
 
@@ -464,7 +464,12 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
         protected virtual FormattableString GetControllerReturnTypeDeclaration(string currentModule, MethodInfo method)
         {
-            return GetVariableTypeDeclaration(currentModule, method.ReturnType.UnwrapPossibleTaskType(), method, method.ReturnTypeCustomAttributes);
+            var methodReturnType = TypeWithNullabilityContext.MethodReturnType(method);
+            methodReturnType = UnwrapControllerActionReturnType(methodReturnType);
+
+            var methodReturnTypeRef = GetTypeRef(methodReturnType);
+
+            return GetVariableTypeDeclaration(currentModule, methodReturnTypeRef);
         }
 
         protected virtual FormattableString GenerateControllerMethodDeclaration(string currentModule, MethodInfo method, FormattableString returnTypeDeclaration, Func<MethodInfo, FormattableString> controllerMethodBodyGenerator)
@@ -501,163 +506,164 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
         protected virtual FormattableString GetRequestUrlExpression(string url)
         {
-            return this.options.RequestUrlExpression?.Invoke(url) ?? $"'{url}'";
+            return this.options.RequestUrlExpressionGenerator?.Invoke(url) ?? $"'{url}'";
         }
 
         protected virtual FormattableString GetControllerParameterDeclaration(string currentModule, ParameterInfo parameter)
         {
-            return $"{parameter.Name}{(parameter.HasDefaultValue ? "?" : "")}: {GetControllerParameterTypeDeclaration(currentModule, parameter)}";
-        }
+            var parameterType = TypeWithNullabilityContext.ParameterType(parameter);
+            var parameterTypeRef = GetTypeRef(parameterType, this.options.ParameterNullableTypeMapping);
+            var parameterName = parameter.Name;
 
-        protected virtual FormattableString GetControllerParameterTypeDeclaration(string currentModule, ParameterInfo parameter)
-        {
-            return GetVariableTypeDeclaration(currentModule, parameter.ParameterType, parameter);
-        }
-
-        protected virtual FormattableString GetVariableTypeDeclaration(string currentModule, Type type, params ICustomAttributeProvider[] attributeProviders)
-        {
-            FormattableString declaration = $"{GetTypeScriptTypeName(currentModule, type)}";
-
-            return ShouldMakeDeclarationTypeNullable(type, attributeProviders)
-                ? MarkTypeDeclarationAsNullable(declaration)
-                : declaration;
-        }
-
-        protected virtual FormattableString MarkTypeDeclarationAsNullable(FormattableString typeDeclaration)
-        {
-            var nullMarker = this.options.NullableTypeMapping switch
+            if (this.options.MakeUndefinedParametersOptional && parameterTypeRef.Is(TypeRef.Undefined))
             {
-                NullableTypeMapping.Null => "null",
-                NullableTypeMapping.Undefined => "undefined",
-                NullableTypeMapping.NullOrUndefined => "undefined | null",
-
-                _ => throw new ArgumentException()
-            };
-
-            return $"{typeDeclaration} | {nullMarker}";
-        }
-
-        protected virtual bool ShouldMakeDeclarationTypeNullable(Type type, params ICustomAttributeProvider[] attributeProviders)
-        {
-            foreach (var attributeProvider in attributeProviders)
+                parameterTypeRef = parameterTypeRef.Subtract(TypeRef.Undefined);
+                parameterName += "?";
+            }
+            else if (parameter.HasDefaultValue)
             {
-                var customAttrs = attributeProvider.CustomAttrs();
-
-                if (customAttrs.Has("System.Diagnostics.CodeAnalysis.DisallowNullAttribute") ||
-                    customAttrs.Has("System.Diagnostics.CodeAnalysis.NotNullAttribute") ||
-                    customAttrs.Has("JetBrains.Annotations.NotNullAttribute"))
-                {
-                    return false;
-                }
-
-                if (customAttrs.Has("System.Diagnostics.CodeAnalysis.MaybeNullAttribute") ||
-                    customAttrs.Has("System.Diagnostics.CodeAnalysis.AllowNullAttribute") ||
-                    customAttrs.Has("System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute") ||
-                    customAttrs.Has("JetBrains.Annotations.CanBeNullAttribute"))
-                {
-                    return true;
-                }
+                parameterName += "?";
             }
 
-            if (type.IsNullableValueType())
-            {
-                return true;
-            }
-
-            if (type.Is<string>() && this.options.StringsAreNullableByDefault)
-            {
-                return true;
-            }
-
-            return false;
+            return $"{parameterName}: {GetVariableTypeDeclaration(currentModule, parameterTypeRef)}";
         }
 
-        protected virtual string GetTypeScriptTypeName(string currentModule, Type type)
+        protected virtual FormattableString GetVariableTypeDeclaration(string currentModule, TypeRef typeRef)
         {
-            type = type.UnwrapPossibleNullableType();
+            return $"{GetTypeScriptTypeName(currentModule, typeRef)}";
+        }
 
-            if (type == typeof(void))
-                return "void";
+        protected virtual TypeRef GetNonNullableTypeRef(TypeWithNullabilityContext type)
+        {
+            if (!this.options.TypeFilter(type.GetClrType()))
+                return TypeRef.Any;
 
-            if (type == typeof(object))
-                return "any";
+            if (type.GetClrType() == typeof(void))
+                return TypeRef.Void;
 
-            if (type == typeof(string))
-                return "string";
+            if (type.IsGenericParameter)
+                return TypeRef.GenericArg(type.GetClrType());
 
-            if (type == typeof(bool))
-                return "boolean";
+            if (type.GetClrType() == typeof(object))
+                return TypeRef.Any;
 
-            if (type == typeof(DateTime) ||
-                type == typeof(DateTimeOffset) ||
+            if (type.GetClrType() == typeof(string))
+                return TypeRef.String;
+
+            if (type.GetClrType() == typeof(bool))
+                return TypeRef.Boolean;
+
+            if (type.GetClrType() == typeof(DateTime) ||
+                type.GetClrType() == typeof(DateTimeOffset) ||
                 type.FullName == "NodaTime.Instant" ||
                 type.FullName == "NodaTime.LocalDate" ||
                 type.FullName == "NodaTime.LocalDateTime")
             {
-                return "Date";
+                return TypeRef.Date;
             }
 
-            if (type == typeof(Guid))
-                return "string";
+            if (type.GetClrType() == typeof(Guid))
+                return TypeRef.String;
 
-            if (type.IsNumber())
-                return "number";
+            if (type.GetClrType().IsNumber())
+                return TypeRef.Number;
 
-            if (type == typeof(IFormFile))
-                return "FormData";
+            if (type.GetClrType() == typeof(IFormFile))
+                return TypeRef.FormData;
 
-            if (type == typeof(FileResult))
-                return "any";
+            if (type.GetClrType() == typeof(FileResult))
+                return TypeRef.Any;
 
             if (type.IsAssignableToGenericType(typeof(IDictionary<,>)))
             {
                 var genericArguments = type.ExtractGenericArguments(typeof(IDictionary<,>));
-                var valueTypeName = GetTypeScriptTypeName(currentModule, genericArguments[1]);
 
-                if (genericArguments[0] == typeof(string))
-                    return $"{{[prop: string]: {valueTypeName}}}";
+                var keyType = genericArguments[0];
+                var valueType = genericArguments[1];
 
-                if (genericArguments[0].IsNumber())
-                    return $"{{[prop: number]: {valueTypeName}}}";
+                if (keyType.GetClrType() == typeof(string) || keyType.GetClrType().IsNumber())
+                    return TypeRef.Dict(GetTypeRef(keyType), GetTypeRef(valueType));
 
-                return "any";
+                if (keyType.GetClrType().IsEnum)
+                    return TypeRef.MappedType(GetTypeRef(keyType), GetTypeRef(valueType));
+
+                return TypeRef.Any;
             }
 
-            if (IsGenericCollection(type))
-                return GetTypeScriptTypeName(currentModule, type.GetEnumerableItemType()) + "[]";
-
-            if (IsNonGenericCollection(type))
-                return "any[]";
-
-            if (type.IsAssignableToGenericType(typeof(ActionResult<>)))
-                return GetTypeScriptTypeName(currentModule, type.ExtractGenericArguments(typeof(ActionResult<>)).Single());
-
-            if (type.Is<IActionResult>())
-                return "any";
-
-            if (type.IsGenericParameter)
-                return type.Name;
-
-            var typeModule = GetModule(type);
-            return new[]
+            if (IsGenericCollection(type.GetClrType()))
             {
-                GetModuleReference(currentModule, typeModule),
-                CalculateTypeScriptNamespace(typeModule, type),
-                NameWithGenericArguments(currentModule, type)
-            }.JoinNonEmpty(".");
+                var collectionType = type.ExtractGenericArguments(typeof(IEnumerable<>)).Single();
+                return TypeRef.ArrayOf(GetTypeRef(collectionType));
+            }
+
+            if (IsNonGenericCollection(type.GetClrType()))
+                return TypeRef.ArrayOf(TypeRef.Any);
+
+            if (type.IsGenericType)
+                return TypeRef.GenericType(TypeRef.UserType(type.GetClrType()), type.GetGenericArguments().Select(arg => GetTypeRef(arg)).ToList());
+
+            return TypeRef.UserType(type.GetClrType());
         }
 
-        protected virtual string NameWithGenericArguments(string currentModule, Type type)
+        protected virtual TypeRef GetTypeRef(TypeWithNullabilityContext type, NullableTypeMapping? preferredTypeMapping = null)
         {
-            if (!type.IsGenericType)
-                return type.Name;
+            var nonNullableTypeRef = GetNonNullableTypeRef(type);
 
-            var genericParameters = type
-                .GetGenericArguments()
-                .Select(genericArgumentType => GetTypeScriptTypeName(currentModule, genericArgumentType))
-                .JoinBy(", ");
+            var shouldBeNullable = ShouldBeNullable(type);
 
-            return $"{StripGenericMarker(type.Name)}<{genericParameters}>";
+            if (shouldBeNullable == false)
+                return nonNullableTypeRef;
+
+            if (shouldBeNullable == true || type.NullabilityType == NullabilityStatus.Null)
+                return MakeNullable(nonNullableTypeRef, preferredTypeMapping);
+
+            return nonNullableTypeRef;
+        }
+
+        protected virtual bool? ShouldBeNullable(TypeWithNullabilityContext type)
+        {
+            if (type.GetClrType() == typeof(string) && type.NullabilityType == NullabilityStatus.Oblivious && this.options.StringsAreNullableByDefault)
+                return true;
+
+            return null;
+        }
+
+        protected virtual TypeRef MakeNullable(TypeRef typeRef, NullableTypeMapping? preferredTypeMapping = null)
+        {
+            var nullableTypeMapping = preferredTypeMapping ?? this.options.DefaultNullableTypeMapping;
+
+            return nullableTypeMapping switch
+            {
+                NullableTypeMapping.Null => TypeRef.Union(typeRef, TypeRef.Null),
+                NullableTypeMapping.Undefined => TypeRef.Union(typeRef, TypeRef.Undefined),
+                NullableTypeMapping.NullOrUndefined => TypeRef.Union(typeRef, TypeRef.Undefined, TypeRef.Null),
+
+                _ => throw new ArgumentException(),
+            };
+        }
+
+        protected virtual string GetTypeScriptTypeName(string currentModule, TypeRef typeRef)
+        {
+            return typeRef.Render(type =>
+            {
+                var typeModule = GetModule(type);
+                return new[]
+                {
+                    GetModuleReference(currentModule, typeModule),
+                    CalculateTypeScriptNamespace(typeModule, type),
+                    CalculateTypeScriptTypeName(typeModule, type)
+                }.JoinNonEmpty(".");
+            });
+        }
+
+        protected virtual string CalculateTypeScriptTypeName(string typeModule, Type type)
+        {
+            return StripGenericMarker(type.Name);
+        }
+
+        protected virtual string CalculateTypeScriptNamespace(string typeModule, Type type)
+        {
+            return this.options.NamespaceCalculator(typeModule, type);
         }
 
         protected virtual string GetModuleReference(string currentModule, string importedModule)
@@ -807,24 +813,6 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 m => string.Concat(m.Value[0], ' ', capitaliseWords ? m.Value[1] : char.ToLower(m.Value[1])));
         }
 
-        protected virtual Type GetFieldOrPropertyType(MemberInfo member)
-        {
-            return member is FieldInfo fieldInfo ? fieldInfo.FieldType :
-                   member is PropertyInfo propertyInfo ? propertyInfo.PropertyType :
-                   throw new ArgumentException();
-        }
-
-        protected virtual IEnumerable<Type> UnwrapPossibleCollectionType(Type type)
-        {
-            if (type.IsAssignableToGenericType(typeof(IDictionary<,>)))
-                return type.ExtractGenericArguments(typeof(IDictionary<,>)).SelectMany(UnwrapPossibleCollectionType);
-
-            if (type.IsGenericEnumerable())
-                return UnwrapPossibleCollectionType(type.GetEnumerableItemType());
-
-            return new[] { type };
-        }
-
         protected class HttpRequestSpec
         {
             public HttpRequestSpec(MethodInfo method, string url, string httpMethod, IList<ParameterInfo> queryStringParameters, ParameterInfo bodyParameter)
@@ -843,7 +831,274 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
             public ParameterInfo BodyParameter { get; }
         }
 
-        class DefaultModules
+        protected enum NullabilityStatus
+        {
+            NotNull,
+            Null,
+            Oblivious
+        }
+
+        protected class TypeWithNullabilityContext
+        {
+            private readonly Type clrType;
+
+            private TypeWithNullabilityContext(Type clrType, params ICustomAttributeProvider[] customAttributeProviders)
+            {
+                CustomAttributeProviders = customAttributeProviders;
+
+                if (clrType.IsNullableValueType())
+                {
+                    this.clrType = clrType.UnwrapPossibleNullableType();
+                    NullabilityType = NullabilityStatus.Null;
+                }
+                else if (clrType.IsValueType)
+                {
+                    this.clrType = clrType;
+                    NullabilityType = NullabilityStatus.NotNull;
+                }
+                else
+                {
+                    this.clrType = clrType;
+                    NullabilityType = GetReferenceTypeNullability(customAttributeProviders);
+                }
+            }
+
+            public IList<TypeWithNullabilityContext> ExtractGenericArguments(Type genericTypeDefinition)
+            {
+                return this.clrType
+                    .ExtractGenericArguments(genericTypeDefinition)
+                    .Select(arg => Contextless(arg))
+                    .ToList();
+            }
+
+            public TypeWithNullabilityContext[] GetGenericArguments()
+            {
+                return this.clrType.GetGenericArguments().Select(arg => Contextless(arg)).ToArray();
+            }
+
+            public string Name => this.clrType.Name;
+            public string FullName => this.clrType.FullName;
+            public bool IsGenericType => this.clrType.IsGenericType;
+            public bool IsGenericParameter => this.clrType.IsGenericParameter;
+            public bool IsAssignableToGenericType(Type genericType) => this.clrType.IsAssignableToGenericType(genericType);
+
+            public Type GetClrType() => this.clrType;
+
+            public NullabilityStatus NullabilityType { get; }
+
+            public ICustomAttributeProvider[] CustomAttributeProviders { get; }
+
+            public static TypeWithNullabilityContext FieldOrPropertyType(MemberInfo member)
+            {
+                if (member is FieldInfo fieldInfo)
+                    return new TypeWithNullabilityContext(fieldInfo.FieldType, fieldInfo);
+
+                if (member is PropertyInfo propertyInfo)
+                    return new TypeWithNullabilityContext(propertyInfo.PropertyType, propertyInfo, propertyInfo.GetMethod, propertyInfo.GetMethod.ReturnTypeCustomAttributes);
+
+                throw new ArgumentException();
+            }
+
+            public static TypeWithNullabilityContext MethodReturnType(MethodInfo method)
+            {
+                return new TypeWithNullabilityContext(method.ReturnType, method, method.ReturnTypeCustomAttributes);
+            }
+
+            public static TypeWithNullabilityContext ParameterType(ParameterInfo parameter)
+            {
+                return new TypeWithNullabilityContext(parameter.ParameterType, parameter);
+            }
+
+            public static TypeWithNullabilityContext BaseType(Type type)
+            {
+                return Contextless(type.BaseType);
+            }
+
+            public static TypeWithNullabilityContext Contextless(Type type)
+            {
+                return new TypeWithNullabilityContext(type);
+            }
+
+            public static IList<TypeWithNullabilityContext> ImplementedInterfaces(Type type)
+            {
+                return type.GetInterfaces().Select(Contextless).ToList();
+            }
+
+            private static NullabilityStatus GetReferenceTypeNullability(ICustomAttributeProvider[] attributeProviders)
+            {
+                foreach (var attributeProvider in attributeProviders)
+                {
+                    var customAttrs = attributeProvider.CustomAttrs();
+
+                    if (customAttrs.Has("System.Diagnostics.CodeAnalysis.DisallowNullAttribute") ||
+                        customAttrs.Has("System.Diagnostics.CodeAnalysis.NotNullAttribute") ||
+                        customAttrs.Has("JetBrains.Annotations.NotNullAttribute"))
+                    {
+                        return NullabilityStatus.NotNull;
+                    }
+
+                    if (customAttrs.Has("System.Diagnostics.CodeAnalysis.MaybeNullAttribute") ||
+                        customAttrs.Has("System.Diagnostics.CodeAnalysis.AllowNullAttribute") ||
+                        customAttrs.Has("System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute") ||
+                        customAttrs.Has("JetBrains.Annotations.CanBeNullAttribute"))
+                    {
+                        return NullabilityStatus.Null;
+                    }
+                }
+
+                return NullabilityStatus.Oblivious;
+            }
+        }
+
+        protected abstract class TypeRef : StructurallyEquatable
+        {
+            public abstract IList<Type> GetDependencies();
+            public abstract string Render(Func<Type, string> typeScriptNameCalculator);
+            public abstract bool IsAtomic { get; }
+
+            public virtual bool Is(TypeRef typeRef) => Equals(typeRef);
+            public virtual TypeRef Subtract(TypeRef typeRef) => Equals(typeRef) ? Never : this;
+
+            class UserTypeRef : TypeRef
+            {
+                private readonly Type type;
+
+                public UserTypeRef(Type type) => this.type = type;
+
+                public override IList<Type> GetDependencies() => new[] {type.IsGenericType ? type.GetGenericTypeDefinition() : type};
+
+                public override string Render(Func<Type, string> typeScriptNameCalculator) => typeScriptNameCalculator(this.type);
+
+                public override bool IsAtomic => true;
+
+                protected override IEnumerable<object> EqualsBy() => new[] { this.type };
+            }
+
+            class CompoundTypeRef : TypeRef
+            {
+                private readonly FormattableString formattableString;
+                private readonly bool needsAtomicConstituents;
+
+                public CompoundTypeRef(FormattableString formattableString, bool isAtomic, bool needsAtomicConstituents)
+                {
+                    this.formattableString = formattableString;
+                    IsAtomic = isAtomic;
+                    this.needsAtomicConstituents = needsAtomicConstituents;
+                }
+
+                public override IList<Type> GetDependencies()
+                {
+                    static IList<Type> DoGetReferencedTypes(FormattableString formattableString)
+                    {
+                        return formattableString
+                            .GetArguments()
+                            .SelectMany(p => p is TypeRef tr ? tr.GetDependencies() :
+                                             p is FormattableString fs ? DoGetReferencedTypes(fs) :
+                                             new Type[0])
+                            .ToList();
+                    }
+
+                    return DoGetReferencedTypes(this.formattableString);
+                }
+
+                public override string Render(Func<Type, string> typeScriptNameCalculator)
+                {
+                    string RenderTypeRef(TypeRef typeRef)
+                    {
+                        var result = typeRef.Render(typeScriptNameCalculator);
+
+                        return this.needsAtomicConstituents && !typeRef.IsAtomic ? $"({result})" : result;
+                    }
+
+                    string RenderFormattableString(FormattableString formattableString)
+                    {
+                        var formatArgs = formattableString
+                            .GetArguments()
+                            .Select(p => p is TypeRef tr ? RenderTypeRef(tr) :
+                                         p is FormattableString fs ? RenderFormattableString(fs) :
+                                         p?.ToString() ?? "")
+                            .ToArray();
+
+                        return string.Format(formattableString.Format, formatArgs);
+                    }
+
+                    return RenderFormattableString(this.formattableString);
+                }
+
+                public override bool IsAtomic { get; }
+
+                protected override IEnumerable<object> EqualsBy() => this.formattableString.GetArguments().Append(this.formattableString.Format);
+            }
+
+            class UnionTypeRef: TypeRef
+            {
+                private readonly ISet<TypeRef> unionTypes;
+
+                public UnionTypeRef(params TypeRef[] unionTypes)
+                {
+                    this.unionTypes = unionTypes.SelectMany(ExtractUnionTypes).ToHashSet();
+                }
+
+                public override IList<Type> GetDependencies() => this.unionTypes.SelectMany(ut => ut.GetDependencies()).ToList();
+
+                public override string Render(Func<Type, string> typeScriptNameCalculator)
+                {
+                    if (this.unionTypes.Count == 0)
+                        return "never";
+
+                    return this.unionTypes.Select(ut => ut.Render(typeScriptNameCalculator)).JoinBy(" | ");
+                }
+
+                public override bool Is(TypeRef typeRef)
+                {
+                    var target = ExtractUnionTypes(typeRef);
+                    return this.unionTypes.IsSupersetOf(target);
+                }
+
+                public override TypeRef Subtract(TypeRef typeRef)
+                {
+                    var target = ExtractUnionTypes(typeRef);
+                    return new UnionTypeRef(this.unionTypes.Except(target).ToArray());
+                }
+
+                public override bool IsAtomic => false;
+
+                protected override IEnumerable<object> EqualsBy() => this.unionTypes;
+
+                private ISet<TypeRef> ExtractUnionTypes(TypeRef typeRef)
+                {
+                    if (typeRef is UnionTypeRef utr)
+                        return utr.unionTypes;
+
+                    return new[] { typeRef }.ToHashSet();
+                }
+            }
+
+            public static TypeRef Compound(FormattableString typeRef, bool isAtomic = false, bool needsAtomicConstituents = true) => new CompoundTypeRef(typeRef, isAtomic, needsAtomicConstituents);
+            public static TypeRef BuiltIn(string typeScriptName) => new CompoundTypeRef($"{typeScriptName}", isAtomic: true, needsAtomicConstituents: false);
+
+            public static TypeRef Any => BuiltIn("any");
+            public static TypeRef Null => BuiltIn("null");
+            public static TypeRef Undefined => BuiltIn("undefined");
+            public static TypeRef Never => Union();
+            public static TypeRef Unknown => BuiltIn("unknown");
+            public static TypeRef Boolean => BuiltIn("boolean");
+            public static TypeRef Void => BuiltIn("void");
+            public static TypeRef String => BuiltIn("string");
+            public static TypeRef Number => BuiltIn("number");
+            public static TypeRef FormData => BuiltIn("FormData");
+            public static TypeRef Date => BuiltIn("Date");
+
+            public static TypeRef UserType(Type type) => new UserTypeRef(type);
+            public static TypeRef Union(params TypeRef[] types) => new UnionTypeRef(types);
+            public static TypeRef GenericArg(Type type) => BuiltIn(type.Name);
+            public static TypeRef GenericType(TypeRef type, IList<TypeRef> genericArguments) => Compound($"{type}<{genericArguments.SelectFS(arg => $"{arg}").JoinBy($", ")}>", isAtomic: true, needsAtomicConstituents: false);
+            public static TypeRef ArrayOf(TypeRef element) => Compound($"{element}[]");
+            public static TypeRef Dict(TypeRef key, TypeRef value) => Compound($"{{[key: {key}]: {value}}}", isAtomic: true, needsAtomicConstituents: false);
+            public static TypeRef MappedType(TypeRef key, TypeRef value) => Compound($"{{[K in {key}]: {value}}}", isAtomic: true, needsAtomicConstituents: false);
+        }
+
+        protected static class DefaultModules
         {
             public const string Enums = "enums";
             public const string Dto = "dto";

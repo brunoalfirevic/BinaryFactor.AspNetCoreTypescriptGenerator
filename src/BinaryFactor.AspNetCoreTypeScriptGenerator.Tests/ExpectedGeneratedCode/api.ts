@@ -16,6 +16,17 @@ export namespace SampleController {
         return response.data
     }
 
+    export async function getRegisteredUsersWithNullableParam(userType: enums.UserType | undefined | null): Promise<dto.UserDto[]> {
+        const response = await axios.request({
+            url: '/Sample/GetRegisteredUsersWithNullableParam',
+            method: 'GET',
+            params: { userType },
+            data: null
+        });
+
+        return response.data
+    }
+
     export async function getMaybeNullReturn(number: number | undefined | null): Promise<dto.DtoInModelsFolder | undefined | null> {
         const response = await axios.request({
             url: '/Sample/GetMaybeNullReturn',
