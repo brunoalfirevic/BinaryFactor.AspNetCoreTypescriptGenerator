@@ -1,4 +1,7 @@
-﻿using System;
+﻿// Copyright (c) Bruno Alfirević. All rights reserved.
+// Licensed under the MIT license. See license.txt in the project root for license information.
+
+using System;
 using System.Linq;
 using BinaryFactor.Utilities;
 using Shouldly;

@@ -1,8 +1,11 @@
-﻿using BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Models;
-using Microsoft.AspNetCore.Mvc;
+﻿// Copyright (c) Bruno Alfirević. All rights reserved.
+// Licensed under the MIT license. See license.txt in the project root for license information.
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using Microsoft.AspNetCore.Mvc;
+using BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Models;
 
 namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Controllers
 {
