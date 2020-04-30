@@ -1,12 +1,12 @@
 // Copyright (c) Bruno Alfirevi?. All rights reserved.
 // Licensed under the MIT license. See license.txt in the project root for license information.
 
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using Shouldly;
 using BinaryFactor.Utilities;
 using BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Utilities;
-using System.IO;
 
 namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests
 {

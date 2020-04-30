@@ -23,14 +23,9 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
     {
         private readonly TypeScriptGeneratorOptions options;
 
-        public TypeScriptGenerator()
-            : this(new TypeScriptGeneratorOptions())
+        public TypeScriptGenerator(TypeScriptGeneratorOptions options = null)
         {
-        }
-
-        public TypeScriptGenerator(TypeScriptGeneratorOptions options)
-        {
-            this.options = options;
+            this.options = options ?? new TypeScriptGeneratorOptions();
         }
 
         public virtual IList<(string module, string code)> GenerateCodeAndSave(string destinationFolder, bool forceCreateDestination = false)
@@ -116,7 +111,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
         public virtual IDictionary<Type, ISet<Type>> GetAllReferencedTypes(IList<Type> entryTypes)
         {
-            var pendingTypes = new HashSet<Type>(entryTypes.Where(type => this.options.TypeFilter(type)));
+            var pendingTypes = new HashSet<Type>(entryTypes.Where(type => TypeFilter(type)));
             var result = pendingTypes.ToDictionary(type => type, _ => (ISet<Type>) new HashSet<Type>());
 
             void Visit(Type type)
@@ -132,7 +127,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
             {
                 foreach (var type in dependencies.Select(t => GetTypeRef(t)).SelectMany(typeRef => typeRef.GetDependencies()))
                 {
-                    if (!this.options.TypeFilter(type))
+                    if (!TypeFilter(type))
                         continue;
 
                     Visit(type);
@@ -236,7 +231,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 "Microsoft.AspNetCore.Mvc.Controller",
                 "Microsoft.AspNetCore.Mvc.ControllerBase",
                 "System.Object"
-            }.Contains(method.DeclaringType.FullName) && this.options.TypeFilter(method.DeclaringType) && method.IsPublic;
+            }.Contains(method.DeclaringType.FullName) && TypeFilter(method.DeclaringType) && method.IsPublic;
         }
 
         protected virtual bool IsNonAbstractController(Type type)
@@ -252,6 +247,11 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
         protected virtual bool IsDto(Type type)
         {
             return !type.IsEnum && !IsPossiblyAbstractController(type);
+        }
+
+        protected virtual bool TypeFilter(Type type)
+        {
+            return this.options.TypeFilter(type);
         }
 
         protected virtual FormattableString GenerateModule(string moduleName, IEnumerable<Type> types, IEnumerable<string> imports, IEnumerable<FormattableString> additionalImports, IEnumerable<FormattableString> additionalContent)
@@ -377,7 +377,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
             ";
         }
 
-        protected IList<MemberInfo> GetDtoProperties(Type type)
+        protected virtual IList<MemberInfo> GetDtoProperties(Type type)
         {
             const BindingFlags bindingFlags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly;
 
@@ -535,7 +535,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
         protected virtual TypeRef GetNonNullableTypeRef(TypeWithNullabilityContext type)
         {
-            if (!this.options.TypeFilter(type.GetClrType()))
+            if (!TypeFilter(type.GetClrType()))
                 return TypeRef.Any;
 
             if (type.GetClrType() == typeof(void))
@@ -600,7 +600,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 return TypeRef.ArrayOf(TypeRef.Any);
 
             if (type.IsGenericType)
-                return TypeRef.GenericType(TypeRef.UserType(type.GetClrType()), type.GetGenericArguments().Select(arg => GetTypeRef(arg)).ToList());
+                return TypeRef.GenericType(TypeRef.UserType(type.GetClrType().GetGenericTypeDefinition()), type.GetGenericArguments().Select(arg => GetTypeRef(arg)).ToList());
 
             return TypeRef.UserType(type.GetClrType());
         }
@@ -965,7 +965,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
                 public UserTypeRef(Type type) => this.type = type;
 
-                public override IList<Type> GetDependencies() => new[] {type.IsGenericType ? type.GetGenericTypeDefinition() : type};
+                public override IList<Type> GetDependencies() => new[] { this.type };
 
                 public override string Render(Func<Type, string> typeScriptNameCalculator) => typeScriptNameCalculator(this.type);
 
