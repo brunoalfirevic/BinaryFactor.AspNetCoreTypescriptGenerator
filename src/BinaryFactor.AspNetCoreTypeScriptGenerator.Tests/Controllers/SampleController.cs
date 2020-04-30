@@ -9,44 +9,44 @@ using BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Models;
 
 namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Controllers
 {
-    public enum UserType
-    {
-        Regular,
-        Admin
-    }
-
     [ApiController]
     [Route("[controller]/[action]")]
     public class SampleController: Controller
     {
-        public IList<UserDto> GetRegisteredUsers(UserType userType) => default;
+        public IList<NestedDto> GetNestedDtos(EnumType enumParameter) => default;
 
-        public IList<UserDto> GetRegisteredUsersWithNullableParam(UserType? userType) => default;
+        public IList<NestedDto> GetNestedDtosWithNullableParam(EnumType? nullableEnumParameter) => default;
 
         public IList<int?> GetIntegers() => default;
 
-        public GenericDtoWrapper<string, UserDto> GetUserDtoWithWrapper() => default;
+        public GenericDto<string, NestedDto> GetGenericDto() => default;
 
-        public GenericDtoWrapper<int, IList<string>> GetIntWithWrapper() => default;
+        public GenericDto<int, IList<string>> GetGenericDtoWithList() => default;
 
         public NullableValueTypeWrapper<DateTime> GetWrappedDateTime() => default;
 
+        public NullableReferenceTypeWrapper<string> GetWrappedString() => default;
+
         [return: MaybeNull]
-        public DtoInModelsFolder GetMaybeNullReturn([AllowNull] string str) => default;
+        public NonGenericDto GetMaybeNullReturn([AllowNull] string str) => default;
+
+        public void ReceiveDtoWithAllowNull([AllowNull] NonGenericDto nonGenericDto) { }
 
         public Dictionary<int, string> GetNumberDictionary() => default;
 
-        public Dictionary<UserType, string> GetEnumDictionary() => default;
+        public IDictionary<string, string> GetStringDictionary() => default;
+
+        public Dictionary<EnumType, bool> GetEnumDictionary() => default;
 
         [return: MaybeNull]
-        public object GetMaybeNullObjectReturn([AllowNull] int number) => default;
+        public object GetMaybeNullObjectReturn(int? number) => default;
 
-        public class UserDto
+        public class NestedDto
         {
             [MaybeNull]
-            public DtoInModelsFolder ValueNullableByMaybeNull { get; set; }
+            public NonGenericDto ValueNullableByMaybeNull { get; set; }
 
-            public string FirstName { get; set; }
+            public string FirstNameNullableByStringRule { get; set; }
 
             [NotNull]
             public string LastNameNotNull { get; set; }

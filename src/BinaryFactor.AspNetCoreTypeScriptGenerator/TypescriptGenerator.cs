@@ -582,10 +582,10 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 var valueType = genericArguments[1];
 
                 if (keyType.GetClrType() == typeof(string) || keyType.GetClrType().IsNumber())
-                    return TypeRef.Dict(GetTypeRef(keyType), GetTypeRef(valueType));
+                    return TypeRef.Dict(GetNonNullableTypeRef(keyType), GetTypeRef(valueType));
 
                 if (keyType.GetClrType().IsEnum)
-                    return TypeRef.MappedType(GetTypeRef(keyType), GetTypeRef(valueType));
+                    return TypeRef.MappedType(GetNonNullableTypeRef(keyType), GetTypeRef(valueType));
 
                 return TypeRef.Any;
             }

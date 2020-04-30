@@ -3,7 +3,7 @@
 
 namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Models
 {
-    public class DtoInModelsFolder
+    public class NonGenericDto
     {
         public string Value;
     }

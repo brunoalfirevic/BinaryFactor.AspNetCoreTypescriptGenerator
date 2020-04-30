@@ -1,17 +1,16 @@
 ﻿// Copyright (c) Bruno Alfirević. All rights reserved.
 // Licensed under the MIT license. See license.txt in the project root for license information.
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Models
 {
-    public class GenericDtoWrapper<K, V>
+    public class NullableReferenceTypeWrapper<T>
+       where T : class
     {
-        public K Key{ get; set; }
-        public V Value { get; set; }
-    }
+        [MaybeNull]
+        public T MaybeNullValue { get; set; }
 
-    public class NullableValueTypeWrapper<T>
-        where T: struct
-    {
-        public T? Value { get; set; }
+        public T NotNullValue { get; set; }
     }
 }
