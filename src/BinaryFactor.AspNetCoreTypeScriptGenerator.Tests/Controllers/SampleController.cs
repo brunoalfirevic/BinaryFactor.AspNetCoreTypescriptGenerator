@@ -30,6 +30,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Controllers
         [return: MaybeNull]
         public NonGenericDto GetMaybeNullReturn([AllowNull] string str) => default;
 
+        [HttpPost]
         public void ReceiveDtoWithAllowNull([AllowNull] NonGenericDto nonGenericDto) { }
 
         public Dictionary<int, string> GetNumberDictionary() => default;
@@ -40,6 +41,9 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Controllers
 
         [return: MaybeNull]
         public object GetMaybeNullObjectReturn(int? number) => default;
+
+        [HttpPost]
+        public object PostWithStringParam([FromForm] string stringParam, [FromForm] string intParam) => default;
 
         public class NestedDto
         {

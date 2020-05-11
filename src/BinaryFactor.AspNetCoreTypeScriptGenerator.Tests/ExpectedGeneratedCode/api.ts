@@ -96,7 +96,7 @@ export namespace SampleController {
     export async function receiveDtoWithAllowNull(nonGenericDto?: dto.NonGenericDto | null): Promise<void> {
         const response = await axios.request({
             url: '/Sample/ReceiveDtoWithAllowNull',
-            method: 'GET',
+            method: 'POST',
             params: {  },
             data: nonGenericDto
         });
@@ -143,6 +143,17 @@ export namespace SampleController {
             method: 'GET',
             params: { number },
             data: null
+        });
+
+        return response.data
+    }
+
+    export async function postWithStringParam(stringParam?: string | null, intParam?: string | null): Promise<any> {
+        const response = await axios.request({
+            url: '/Sample/PostWithStringParam',
+            method: 'POST',
+            params: {  },
+            data: axios.getUri({ url: '', params: { stringParam, intParam } })
         });
 
         return response.data

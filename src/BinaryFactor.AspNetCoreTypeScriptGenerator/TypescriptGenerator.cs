@@ -498,7 +498,10 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                     url: {GetRequestUrlExpression(httpRequestSpec.Url)},
                     method: '{httpRequestSpec.HttpMethod}',
                     params: {{ {httpRequestSpec.QueryStringParameters.Select(p => p.Name).JoinBy(", ")} }},
-                    data: {httpRequestSpec.BodyParameter?.Name ?? "null"}
+                    data: {httpRequestSpec.BodyParameter?.Name ??
+                               (httpRequestSpec.FormParameters.Any()
+                                   ? $"axios.getUri({{ url: '', params: {{ {httpRequestSpec.FormParameters.Select(p => p.Name).JoinBy(", ")} }} }})"
+                                   : "null")}
                 }});
 
                 return response.data";
@@ -679,7 +682,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
             if (!typeName.Contains("`"))
                 return typeName;
 
-            return typeName.Substring(0, typeName.IndexOf("`"));
+            return typeName.Substring(0, typeName.IndexOf("`", StringComparison.Ordinal));
         }
 
         protected virtual bool IsGenericCollection(Type type)
@@ -699,6 +702,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 GetControllerActionUrl(method),
                 GetControllerActionHttpMethod(method),
                 GetControllerActionQueryStringParameters(method),
+                GetControllerActionFormParameters(method),
                 GetControllerActionBodyParameter(method));
         }
 
@@ -725,27 +729,54 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 .ReplaceIgnoreCase("{action}", actionName);
         }
 
+        protected virtual IList<ParameterInfo> GetControllerActionFormParameters(MethodInfo controllerAction)
+        {
+            var paramsWithBindingSource =
+                (from param in controllerAction.GetParameters()
+                    let bindingSource = param.CustomAttrs().Get<IBindingSourceMetadata>()?.BindingSource
+                    select new { param, bindingSource }).ToList();
+
+            return paramsWithBindingSource
+                .Where(p => p.bindingSource != null && p.bindingSource.CanAcceptDataFrom(BindingSource.Form))
+                .Select(p => p.param)
+                .ToList();
+        }
+
         protected virtual IList<ParameterInfo> GetControllerActionQueryStringParameters(MethodInfo controllerAction)
         {
-            return controllerAction
-                .GetParameters()
-                .Where(p => p != GetControllerActionBodyParameter(controllerAction))
+            var paramsWithBindingSource =
+                (from param in controllerAction.GetParameters()
+                    let bindingSource = param.CustomAttrs().Get<IBindingSourceMetadata>()?.BindingSource
+                    select new { param, bindingSource }).ToList();
+
+            return paramsWithBindingSource
+                .Where(p => p.param != GetControllerActionBodyParameter(controllerAction) &&
+                            (p.bindingSource == null || p.bindingSource.CanAcceptDataFrom(BindingSource.Query)))
+                .Select(p => p.param)
                 .ToList();
         }
 
         protected virtual ParameterInfo GetControllerActionBodyParameter(MethodInfo controllerAction)
         {
-            var explicitBodyParameter =
-                (from p in controllerAction.GetParameters()
-                 let bindingSource = p.CustomAttrs().Get<IBindingSourceMetadata>()?.BindingSource
-                 where bindingSource != null && bindingSource.CanAcceptDataFrom(BindingSource.Body)
-                 select p).SingleOrDefault();
+            var paramsWithBindingSource =
+                (from param in controllerAction.GetParameters()
+                 let bindingSource = param.CustomAttrs().Get<IBindingSourceMetadata>()?.BindingSource
+                 select new {param, bindingSource}).ToList();
+
+            if (GetControllerActionFormParameters(controllerAction).Any())
+                return null;
+
+            var explicitBodyParameter = paramsWithBindingSource.SingleOrDefault(p => p.bindingSource != null && p.bindingSource.CanAcceptDataFrom(BindingSource.Body));
 
             if (explicitBodyParameter != null)
-                return explicitBodyParameter;
+                return explicitBodyParameter.param;
 
-            return controllerAction
-                .GetParameters()
+            if (!new[] {"POST", "PUT", "PATCH"}.Contains(GetControllerActionHttpMethod(controllerAction), StringComparer.OrdinalIgnoreCase))
+                return null;
+
+            return paramsWithBindingSource
+                .Where(p => p.bindingSource == null)
+                .Select(p => p.param)
                 .SingleOrDefault(p => (p.ParameterType.IsClass && p.ParameterType != typeof(string)) ||
                                       p.ParameterType == typeof(IFormFile));
         }
@@ -815,12 +846,19 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
         protected class HttpRequestSpec
         {
-            public HttpRequestSpec(MethodInfo method, string url, string httpMethod, IList<ParameterInfo> queryStringParameters, ParameterInfo bodyParameter)
+            public HttpRequestSpec(
+                MethodInfo method,
+                string url,
+                string httpMethod,
+                IList<ParameterInfo> queryStringParameters,
+                IList<ParameterInfo> formParameters,
+                ParameterInfo bodyParameter)
             {
                 Method = method;
                 Url = url;
                 HttpMethod = httpMethod;
                 QueryStringParameters = queryStringParameters;
+                FormParameters = formParameters;
                 BodyParameter = bodyParameter;
             }
 
@@ -828,6 +866,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
             public string Url { get; }
             public string HttpMethod { get; }
             public IList<ParameterInfo> QueryStringParameters { get; }
+            public IList<ParameterInfo> FormParameters { get; }
             public ParameterInfo BodyParameter { get; }
         }
 
@@ -846,7 +885,14 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
             {
                 CustomAttributeProviders = customAttributeProviders;
 
-                if (clrType.IsNullableValueType())
+                var explicitAttributeBasedNullability = GetExplicitAttributeBasedNullability(customAttributeProviders);
+
+                if (explicitAttributeBasedNullability != NullabilityStatus.Oblivious)
+                {
+                    this.clrType = clrType.UnwrapPossibleNullableType();
+                    NullabilityType = explicitAttributeBasedNullability;
+                }
+                else if (clrType.IsNullableValueType())
                 {
                     this.clrType = clrType.UnwrapPossibleNullableType();
                     NullabilityType = NullabilityStatus.Null;
@@ -859,7 +905,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 else
                 {
                     this.clrType = clrType;
-                    NullabilityType = GetReferenceTypeNullability(customAttributeProviders);
+                    NullabilityType = NullabilityStatus.Oblivious;
                 }
             }
 
@@ -867,7 +913,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
             {
                 return this.clrType
                     .ExtractGenericArguments(genericTypeDefinition)
-                    .Select(arg => Contextless(arg))
+                    .Select(Contextless)
                     .ToList();
             }
 
@@ -924,7 +970,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 return type.GetInterfaces().Select(Contextless).ToList();
             }
 
-            private static NullabilityStatus GetReferenceTypeNullability(ICustomAttributeProvider[] attributeProviders)
+            private static NullabilityStatus GetExplicitAttributeBasedNullability(ICustomAttributeProvider[] attributeProviders)
             {
                 foreach (var attributeProvider in attributeProviders)
                 {
