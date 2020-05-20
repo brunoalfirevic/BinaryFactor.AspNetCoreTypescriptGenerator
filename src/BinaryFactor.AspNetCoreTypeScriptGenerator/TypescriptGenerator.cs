@@ -937,10 +937,20 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
             public static TypeWithNullabilityContext FieldOrPropertyType(MemberInfo member)
             {
                 if (member is FieldInfo fieldInfo)
+                {
                     return new TypeWithNullabilityContext(fieldInfo.FieldType, fieldInfo);
+                }
 
                 if (member is PropertyInfo propertyInfo)
-                    return new TypeWithNullabilityContext(propertyInfo.PropertyType, propertyInfo, propertyInfo.GetMethod, propertyInfo.GetMethod.ReturnTypeCustomAttributes);
+                {
+                    return new TypeWithNullabilityContext(
+                        propertyInfo.PropertyType,
+                        propertyInfo,
+                        propertyInfo.GetMethod,
+                        propertyInfo.GetMethod.ReturnTypeCustomAttributes,
+                        propertyInfo.SetMethod,
+                        propertyInfo.SetMethod.GetParameters().FirstOrDefault());
+                }
 
                 throw new ArgumentException();
             }
@@ -970,27 +980,32 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 return type.GetInterfaces().Select(Contextless).ToList();
             }
 
-            private static NullabilityStatus GetExplicitAttributeBasedNullability(ICustomAttributeProvider[] attributeProviders)
+            private static NullabilityStatus GetExplicitAttributeBasedNullability(IList<ICustomAttributeProvider> attributeProviders)
             {
-                foreach (var attributeProvider in attributeProviders)
+                static bool IsNullableByAttribute(InheritedCustomAttributeAccessor customAttrs)
                 {
-                    var customAttrs = attributeProvider.CustomAttrs();
-
-                    if (customAttrs.Has("System.Diagnostics.CodeAnalysis.DisallowNullAttribute") ||
-                        customAttrs.Has("System.Diagnostics.CodeAnalysis.NotNullAttribute") ||
-                        customAttrs.Has("JetBrains.Annotations.NotNullAttribute"))
-                    {
-                        return NullabilityStatus.NotNull;
-                    }
-
-                    if (customAttrs.Has("System.Diagnostics.CodeAnalysis.MaybeNullAttribute") ||
-                        customAttrs.Has("System.Diagnostics.CodeAnalysis.AllowNullAttribute") ||
-                        customAttrs.Has("System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute") ||
-                        customAttrs.Has("JetBrains.Annotations.CanBeNullAttribute"))
-                    {
-                        return NullabilityStatus.Null;
-                    }
+                    return customAttrs.Has("System.Diagnostics.CodeAnalysis.MaybeNullAttribute") ||
+                           customAttrs.Has("System.Diagnostics.CodeAnalysis.AllowNullAttribute") ||
+                           customAttrs.Has("System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute") ||
+                           customAttrs.Has("JetBrains.Annotations.CanBeNullAttribute");
                 }
+
+                static bool IsNotNullableByAttribute(InheritedCustomAttributeAccessor customAttrs)
+                {
+                    return customAttrs.Has("System.Diagnostics.CodeAnalysis.DisallowNullAttribute") ||
+                           customAttrs.Has("System.Diagnostics.CodeAnalysis.NotNullAttribute") ||
+                           customAttrs.Has("JetBrains.Annotations.NotNullAttribute");
+                }
+
+                var customAttrAccessors = attributeProviders
+                    .Where(ap => ap != null)
+                    .Select(ap => ap.CustomAttrs());
+
+                if (customAttrAccessors.Any(IsNullableByAttribute))
+                    return NullabilityStatus.Null;
+
+                if (customAttrAccessors.Any(IsNotNullableByAttribute))
+                    return NullabilityStatus.NotNull;
 
                 return NullabilityStatus.Oblivious;
             }

@@ -9,7 +9,8 @@ export interface GenericDto<K, V> {
 export interface NestedDto {
     valueNullableByMaybeNull?: NonGenericDto | null;
     firstNameNullableByStringRule?: string | null;
-    lastNameNotNull: string;
+    lastNameNotNullByNotNullAttribute: string;
+    lastNameNotNullByDisallowNullAttribute: string;
 }
 
 export interface NonGenericDto {

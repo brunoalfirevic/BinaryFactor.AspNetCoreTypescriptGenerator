@@ -53,7 +53,10 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Controllers
             public string FirstNameNullableByStringRule { get; set; }
 
             [NotNull]
-            public string LastNameNotNull { get; set; }
+            public string LastNameNotNullByNotNullAttribute { get; set; }
+
+            [DisallowNull]
+            public string LastNameNotNullByDisallowNullAttribute { get; set; }
         }
     }
 }
