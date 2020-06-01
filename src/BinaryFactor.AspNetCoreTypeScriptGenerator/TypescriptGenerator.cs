@@ -951,7 +951,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                         propertyInfo.GetMethod,
                         propertyInfo.GetMethod.ReturnTypeCustomAttributes,
                         propertyInfo.SetMethod,
-                        propertyInfo.SetMethod.GetParameters().FirstOrDefault());
+                        propertyInfo.SetMethod?.GetParameters().FirstOrDefault());
                 }
 
                 throw new ArgumentException();

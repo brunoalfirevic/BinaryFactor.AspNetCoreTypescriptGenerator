@@ -50,7 +50,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Controllers
             [MaybeNull]
             public NonGenericDto ValueNullableByMaybeNull { get; set; }
 
-            public string FirstNameNullableByStringRule { get; set; }
+            public string FirstNameNullableByStringRule { get; }
 
             [NotNull]
             public string LastNameNotNullByNotNullAttribute { get; set; }
