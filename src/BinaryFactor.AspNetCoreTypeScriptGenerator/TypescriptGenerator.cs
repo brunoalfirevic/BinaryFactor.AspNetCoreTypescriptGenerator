@@ -386,6 +386,8 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
                 .Where(property => property.CanRead)
                 .Cast<MemberInfo>()
                 .Union(type.GetFields(bindingFlags))
+                .Where(member => !member.CustomAttrs().Has("System.Text.Json.Serialization.JsonIgnoreAttribute") &&
+                                 !member.CustomAttrs().Has("Newtonsoft.Json.JsonIgnoreAttribute"))
                 .ToList();
         }
 

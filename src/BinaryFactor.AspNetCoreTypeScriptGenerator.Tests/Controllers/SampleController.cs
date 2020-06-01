@@ -57,6 +57,12 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Controllers
 
             [DisallowNull]
             public string LastNameNotNullByDisallowNullAttribute { get; set; }
+
+            [Newtonsoft.Json.JsonIgnore]
+            public string IgnoredByNewtonsoftJsonIgnore { get; set; }
+
+            [System.Text.Json.Serialization.JsonIgnore]
+            public string IgnoredByTextJsonSerializationJsonIgnore { get; set; }
         }
     }
 }
