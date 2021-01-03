@@ -10,6 +10,9 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{81A2E292-89C4-4ADB-9EF6-6CC10E998F69}"
 	ProjectSection(SolutionItems) = preProject
 		..\.gitignore = ..\.gitignore
+		BinaryFactor.AspNetCoreTypeScriptGenerator.sln.licenseheader = BinaryFactor.AspNetCoreTypeScriptGenerator.sln.licenseheader
+		Directory.Build.props = Directory.Build.props
+		..\global.json = ..\global.json
 		..\go-helpers.ps1 = ..\go-helpers.ps1
 		..\go.bat = ..\go.bat
 		..\go.ps1 = ..\go.ps1

@@ -19,7 +19,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Core" Version="2.2" IncludeAssets="compile" />
     <PackageReference Include="BinaryFactor.Utilities" Version="1.0.28-beta" PrivateAssets="all" />
     <PackageReference Include="BinaryFactor.InterpolatedTemplates" Version="1.0.11-beta" PrivateAssets="all" />
-    <PackageReference Include="ILRepack.MSBuild.Task" Version="2.0.13" PrivateAssets="all" IncludeAssets="build" />
+    <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.18.2" PrivateAssets="all" IncludeAssets="build" />
   </ItemGroup>
 
   <Target Name="ILRepack" AfterTargets="Build">
