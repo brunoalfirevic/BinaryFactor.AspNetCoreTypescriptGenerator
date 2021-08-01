@@ -6,5 +6,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Models
     public class NonGenericDto
     {
         public string Value;
+
+        public int PrivateGetterProperty { private get; set; }
     }
 }

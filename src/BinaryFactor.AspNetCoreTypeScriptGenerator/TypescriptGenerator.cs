@@ -383,7 +383,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator
 
             return type
                 .GetProperties(bindingFlags)
-                .Where(property => property.CanRead)
+                .Where(property => property.CanRead && property.GetMethod.IsPublic)
                 .Cast<MemberInfo>()
                 .Union(type.GetFields(bindingFlags))
                 .Where(member => !member.CustomAttrs().Has("System.Text.Json.Serialization.JsonIgnoreAttribute") &&

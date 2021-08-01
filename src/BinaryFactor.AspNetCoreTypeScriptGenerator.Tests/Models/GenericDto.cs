@@ -5,7 +5,7 @@ namespace BinaryFactor.AspNetCoreTypeScriptGenerator.Tests.Models
 {
     public class GenericDto<K, V>
     {
-        public K Key{ get; set; }
+        public K Key { get; set; }
         public V Value { get; set; }
     }
 }
